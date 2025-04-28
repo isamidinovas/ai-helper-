@@ -8,9 +8,13 @@ from typing import Optional
 import secrets
 from fastapi import HTTPException
 import os
+from dotenv import load_dotenv
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = secrets.token_urlsafe(32)
-print("SECRET_KEY=", os.getenv("SECRET_KEY"))
+
+load_dotenv()  # Загружает все переменные из .env файла
+
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
