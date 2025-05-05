@@ -59,21 +59,17 @@ def login_user(db: Session, email: str, password: str):
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Не удалось проверить токен",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
+        user_email = payload.get("sub")
+        if user_email is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
-        raise credentials_exception
+        raise HTTPException(status_code=401, detail="Could not validate token")
 
-    user = get_user_by_email(db, email)
+    user = db.query(User).filter(User.email == user_email).first()
     if user is None:
-        raise credentials_exception
+        raise HTTPException(status_code=404, detail="User not found")
     return user
