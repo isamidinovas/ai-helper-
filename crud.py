@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import User
+from models import Deck, Flashcard, User
 import models
-from schemas import UserCreate
+from schemas import DeckCreate, UserCreate
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
@@ -73,3 +73,50 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+def create_deck(db: Session, deck_data: DeckCreate):
+    db_deck = Deck(title=deck_data.title, description=deck_data.description)
+    db.add(db_deck)
+    db.commit()
+    db.refresh(db_deck)
+
+    for card_data in deck_data.flashcards:  # здесь тоже flashcards
+        db_card = Flashcard(
+            question=card_data.question,
+            answer=card_data.answer,
+            deck_id=db_deck.id
+        )
+        db.add(db_card)
+
+    db.commit()
+    return db_deck
+
+
+def get_all_decks(db: Session):
+    return db.query(Deck).all()
+
+def get_deck_by_id(db: Session, deck_id: int):
+    return db.query(Deck).filter(Deck.id == deck_id).first()
+from schemas import FlashcardCreate
+
+def add_flashcard_to_deck(db: Session, deck_id: int, card_data: FlashcardCreate):
+    db_card = Flashcard(
+        question=card_data.question,
+        answer=card_data.answer,
+        deck_id=deck_id
+    )
+    db.add(db_card)
+    db.commit()
+    db.refresh(db_card)
+    return db_card
+
+def update_flashcard(db: Session, card_id: int, flashcard_data: FlashcardCreate):
+    db_card = db.query(Flashcard).filter(Flashcard.id == card_id).first()
+    if not db_card:
+        return None
+
+    db_card.question = flashcard_data.question
+    db_card.answer = flashcard_data.answer
+    db.commit()
+    db.refresh(db_card)
+    return db_card
