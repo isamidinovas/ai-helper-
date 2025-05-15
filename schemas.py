@@ -28,6 +28,7 @@ class CategoryOut(CategoryBase):
     class Config:
         orm_mode = True
 
+
 class FlashcardBase(BaseModel):
     question: str
     answer: str
@@ -37,20 +38,20 @@ class FlashcardCreate(FlashcardBase):
 
 class Flashcard(FlashcardBase):
     id: int
+
     class Config:
         orm_mode = True
 
-class DeckBase(BaseModel):
+class FlashcardDeckBase(BaseModel):
     title: str
     description: Optional[str] = None
+    subject: str
 
-class DeckCreate(DeckBase):
+class FlashcardDeckCreate(FlashcardDeckBase):
     flashcards: List[FlashcardCreate] = []
 
-class Deck(BaseModel):
+class FlashcardDeck(FlashcardDeckBase):
     id: int
-    title: str
-    description: Optional[str]
     flashcards: List[Flashcard] = []
 
     class Config:

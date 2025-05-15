@@ -66,49 +66,23 @@ def get_categories(db: Session = Depends(get_db)):
     categories = db.query(Category).all()
     return categories
 
-@app.post("/flashcards/", response_model=schemas.Deck)
-def create_deck(deck: schemas.DeckCreate, db: Session = Depends(get_db)):
-    # Вытаскиваем flashcards отдельно
-    flashcards_data = deck.flashcards
-    db_deck = models.Deck(title=deck.title, description=deck.description)
+
+
+
+@app.post("/decks/", response_model=schemas.FlashcardDeck, status_code=201)
+async def create_deck(deck: schemas.FlashcardDeckCreate, db: Session = Depends(get_db)):
+    db_deck = models.FlashcardDeck(**deck.model_dump(exclude={"flashcards"}))
     db.add(db_deck)
     db.commit()
     db.refresh(db_deck)
-
-    # Добавляем flashcards вручную
-    for card_data in flashcards_data:
-        db_card = models.Flashcard(
-            question=card_data.question,
-            answer=card_data.answer,
-            deck_id=db_deck.id
-        )
-        db.add(db_card)
-
+    for flashcard_data in deck.flashcards:
+        db_flashcard = models.Flashcard(deck_id=db_deck.id, **flashcard_data.model_dump())
+        db.add(db_flashcard)
     db.commit()
     db.refresh(db_deck)
     return db_deck
 
-@app.post("/flashcards/{deck_id}/deck", response_model=schemas.Flashcard)
-def create_card(deck_id: int, flashcard: schemas.FlashcardCreate, db: Session = Depends(get_db)):
-    db_card = models.Flashcard(**flashcard.dict(), deck_id=deck_id)
-    db.add(db_card)
-    db.commit()
-    db.refresh(db_card)
-    return db_card
-@app.get("/flashcards/", response_model=List[schemas.Deck])
-def get_all_decks(db: Session = Depends(get_db)):
-    return db.query(models.Deck).all()
-@app.get("/flashcards/{deck_id}", response_model=schemas.Deck)
-def get_deck(deck_id: int, db: Session = Depends(get_db)):
-    deck = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
-    if not deck:
-        raise HTTPException(status_code=404, detail="Deck not found")
-    return deck
-
-
-@app.put("/flashcards/edit/{card_id}", response_model=schemas.Flashcard)
-def update_flashcard_route(card_id: int, flashcard: schemas.FlashcardCreate, db: Session = Depends(get_db)):
-    updated = update_flashcard(db, card_id, flashcard)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Flashcard not found")
-    return updated
+@app.get("/decks/", response_model=List[schemas.FlashcardDeck])
+async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    decks = db.query(models.FlashcardDeck).offset(skip).limit(limit).all()
+    return decks

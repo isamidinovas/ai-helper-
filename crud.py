@@ -1,17 +1,17 @@
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Deck, Flashcard, User
+from models import Flashcard, User
 import models
-from schemas import DeckCreate, UserCreate
+from schemas import  FlashcardCreate, UserCreate
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-import secrets
 from fastapi import HTTPException, Depends
 import os
 from dotenv import load_dotenv
+from sqlalchemy.orm import joinedload
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -74,41 +74,46 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-def create_deck(db: Session, deck_data: DeckCreate):
-    db_deck = Deck(title=deck_data.title, description=deck_data.description)
-    db.add(db_deck)
-    db.commit()
-    db.refresh(db_deck)
+# def create_deck(db: Session, deck_data: DeckCreate):
+#     db_deck = Deck(title=deck_data.title, description=deck_data.description)
+#     db.add(db_deck)
+#     db.commit()
+#     db.refresh(db_deck)
 
-    for card_data in deck_data.flashcards:  # здесь тоже flashcards
-        db_card = Flashcard(
-            question=card_data.question,
-            answer=card_data.answer,
-            deck_id=db_deck.id
-        )
-        db.add(db_card)
+#     for card_data in deck_data.flashcards:  # здесь тоже flashcards
+#         db_card = Flashcard(
+#             question=card_data.question,
+#             answer=card_data.answer,
+#             deck_id=db_deck.id
+#         )
+#         db.add(db_card)
 
-    db.commit()
-    return db_deck
+#     db.commit()
+#     return db_deck
+
+def get_flashcards(db: Session, deck_id: int):
+    # Получаем флешкарты с автором
+    flashcards = db.query(models.Flashcard).filter(models.Flashcard.deck_id == deck_id).options(joinedload(models.Flashcard.author)).all()
+    return flashcards
 
 
-def get_all_decks(db: Session):
-    return db.query(Deck).all()
+# def get_all_decks(db: Session):
+#     return db.query(Deck).all()
 
-def get_deck_by_id(db: Session, deck_id: int):
-    return db.query(Deck).filter(Deck.id == deck_id).first()
-from schemas import FlashcardCreate
+# def get_deck_by_id(db: Session, deck_id: int):
+#     return db.query(Deck).filter(Deck.id == deck_id).first()
+# from schemas import FlashcardCreate
 
-def add_flashcard_to_deck(db: Session, deck_id: int, card_data: FlashcardCreate):
-    db_card = Flashcard(
-        question=card_data.question,
-        answer=card_data.answer,
-        deck_id=deck_id
-    )
-    db.add(db_card)
-    db.commit()
-    db.refresh(db_card)
-    return db_card
+# def add_flashcard_to_deck(db: Session, deck_id: int, card_data: FlashcardCreate):
+#     db_card = Flashcard(
+#         question=card_data.question,
+#         answer=card_data.answer,
+#         deck_id=deck_id
+#     )
+#     db.add(db_card)
+#     db.commit()
+#     db.refresh(db_card)
+#     return db_card
 
 def update_flashcard(db: Session, card_id: int, flashcard_data: FlashcardCreate):
     db_card = db.query(Flashcard).filter(Flashcard.id == card_id).first()
@@ -120,3 +125,26 @@ def update_flashcard(db: Session, card_id: int, flashcard_data: FlashcardCreate)
     db.commit()
     db.refresh(db_card)
     return db_card
+# def create_deck(db: Session, deck: DeckCreate):
+#     # Создаем колоду
+#     db_deck = models.Deck(
+#         title=deck.title,
+#         description=deck.description,
+#         subject=deck.subject
+#     )
+#     db.add(db_deck)
+#     db.commit()
+#     db.refresh(db_deck)
+    
+#     return db_deck
+# def create_flashcards(db: Session, flashcards_data, deck_id: int):
+#     # Создаем флешкарты для колоды с автором
+#     for card_data in flashcards_data:
+#         db_card = models.Flashcard(
+#             question=card_data.question,
+#             answer=card_data.answer,
+#             deck_id=deck_id,
+#             # author_id=user_id  # Присваиваем ID авторизованного пользователя
+#         )
+#         db.add(db_card)
+#     db.commit()

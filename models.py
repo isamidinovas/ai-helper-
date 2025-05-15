@@ -16,19 +16,23 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
 
-class Deck(Base):
-    __tablename__ = "decks"
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    description = Column(Text)
+class FlashcardDeck(Base):
+    __tablename__ = "flashcard_decks"
 
-    flashcards = relationship("Flashcard", back_populates="deck", cascade="all, delete")
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    description = Column(String, nullable=True)
+    subject = Column(String)
+    
+
+    flashcards = relationship("Flashcard", back_populates="deck")
 
 class Flashcard(Base):
     __tablename__ = "flashcards"
-    id = Column(Integer, primary_key=True, index=True)
-    question = Column(Text, nullable=False)
-    answer = Column(Text, nullable=False)
-    deck_id = Column(Integer, ForeignKey("decks.id"))
 
-    deck = relationship("Deck", back_populates="flashcards")
+    id = Column(Integer, primary_key=True, index=True)
+    question = Column(String)
+    answer = Column(String)
+    deck_id = Column(Integer, ForeignKey("flashcard_decks.id"))
+
+    deck = relationship("FlashcardDeck", back_populates="flashcards")
