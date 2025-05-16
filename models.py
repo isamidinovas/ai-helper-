@@ -10,6 +10,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    flashcard_decks = relationship("FlashcardDeck", back_populates="creator")
 class Category(Base):
     __tablename__ = 'categories'
 
@@ -23,9 +24,12 @@ class FlashcardDeck(Base):
     title = Column(String)
     description = Column(String, nullable=True)
     subject = Column(String)
-    
+    user_id = Column(Integer, ForeignKey("users.id"))
+    flashcards = relationship("Flashcard", back_populates="deck") 
+    creator = relationship("User", back_populates="flashcard_decks")
 
-    flashcards = relationship("Flashcard", back_populates="deck")
+   
+
 
 class Flashcard(Base):
     __tablename__ = "flashcards"
@@ -36,3 +40,6 @@ class Flashcard(Base):
     deck_id = Column(Integer, ForeignKey("flashcard_decks.id"))
 
     deck = relationship("FlashcardDeck", back_populates="flashcards")
+
+
+    

@@ -53,6 +53,7 @@ class FlashcardDeckCreate(FlashcardDeckBase):
 class FlashcardDeck(FlashcardDeckBase):
     id: int
     flashcards: List[Flashcard] = []
-
+    user_id: Optional[int] = None
+    creator:  Optional[UserOut] = None
     class Config:
         orm_mode = True

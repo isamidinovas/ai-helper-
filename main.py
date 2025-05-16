@@ -7,7 +7,9 @@ import crud
 from fastapi.middleware.cors import CORSMiddleware
 from database import SessionLocal, engine
 from datetime import timedelta
-from models import Category, Flashcard, User
+from models import Category,  User
+from sqlalchemy.orm import joinedload
+
 # main.py
 from fastapi import FastAPI
 from crud import get_current_user, update_flashcard
@@ -69,20 +71,47 @@ def get_categories(db: Session = Depends(get_db)):
 
 
 
+# @app.post("/decks/", response_model=schemas.FlashcardDeck, status_code=201)
+# async def create_deck(deck: schemas.FlashcardDeckCreate, db: Session = Depends(get_db)):
+    
+#     db_deck = models.FlashcardDeck(**deck.model_dump(exclude={"flashcards"}))
+#     db.add(db_deck)
+#     db.commit()
+#     db.refresh(db_deck)
+#     for flashcard_data in deck.flashcards:
+#         db_flashcard = models.Flashcard(deck_id=db_deck.id, **flashcard_data.model_dump())
+#         db.add(db_flashcard)
+#     db.commit()
+#     db.refresh(db_deck)
+#     return db_deck
 @app.post("/decks/", response_model=schemas.FlashcardDeck, status_code=201)
-async def create_deck(deck: schemas.FlashcardDeckCreate, db: Session = Depends(get_db)):
-    db_deck = models.FlashcardDeck(**deck.model_dump(exclude={"flashcards"}))
-    db.add(db_deck)
-    db.commit()
-    db.refresh(db_deck)
-    for flashcard_data in deck.flashcards:
-        db_flashcard = models.Flashcard(deck_id=db_deck.id, **flashcard_data.model_dump())
-        db.add(db_flashcard)
-    db.commit()
-    db.refresh(db_deck)
-    return db_deck
+async def create_deck(
+        deck: schemas.FlashcardDeckCreate,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)  # Важно!
+    ):
+        db_deck = models.FlashcardDeck(
+            **deck.model_dump(exclude={"flashcards"}),
+            user_id=current_user.id  # Вот это добавь!
+        )
+        db.add(db_deck)
+        db.commit()
+        db.refresh(db_deck)
+
+        for flashcard_data in deck.flashcards:
+            db_flashcard = models.Flashcard(deck_id=db_deck.id, **flashcard_data.model_dump())
+            db.add(db_flashcard)
+
+        db.commit()
+        db.refresh(db_deck)
+        return db_deck
+
+
+
 
 @app.get("/decks/", response_model=List[schemas.FlashcardDeck])
 async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    decks = db.query(models.FlashcardDeck).offset(skip).limit(limit).all()
+    decks = db.query(models.FlashcardDeck)\
+              .options(joinedload(models.FlashcardDeck.creator))\
+              .offset(skip).limit(limit).all()
     return decks
