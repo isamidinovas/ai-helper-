@@ -9,13 +9,31 @@ from database import SessionLocal, engine
 from datetime import timedelta
 from models import Category,  User
 from sqlalchemy.orm import joinedload
-
-# main.py
+from pydantic import BaseModel
+import os
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.responses import JSONResponse
+from typing import Optional
+import  os
+from dotenv import load_dotenv
+import fitz  # PyMuPDF
+from docx import Document
+from fastapi import FastAPI, File, Form, UploadFile
+import google.generativeai as genai
+import os
+import docx
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from PIL import Image
+from io import BytesIO
+import base64
 from fastapi import FastAPI
 from crud import get_current_user, update_flashcard
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(debug=True)
+load_dotenv()
 
 origins = [
     "http://localhost:3000",  # React dev сервер
@@ -29,6 +47,9 @@ app.add_middleware(
     allow_methods=["*"],                # Разрешить все методы (GET, POST и т.д.)
     allow_headers=["*"],                # Разрешить все заголовки
 )
+# API_KEY = "AIzaSyDP5gAM_SFEgidSaVouogVrdsH8PrZyS9c"
+class GeminiRequest(BaseModel):
+    text: str
 # Функция для подключения к БД
 def get_db():
     db = SessionLocal()
@@ -115,3 +136,80 @@ async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_
               .options(joinedload(models.FlashcardDeck.creator))\
               .offset(skip).limit(limit).all()
     return decks
+
+
+
+
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY environment variable not set")
+genai.configure(api_key=GOOGLE_API_KEY)
+
+available_models = list(genai.list_models())  
+
+model_name = 'models/gemini-1.5-flash-latest'  
+model = genai.GenerativeModel(model_name)
+
+async def generate_gemini_response(prompt, image_parts):
+    try:
+        if image_parts:
+            response = model.generate_content([prompt] + image_parts)
+        else:
+            response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error: {e}"
+@app.post("/chat")
+async def chat_with_gemini(prompt: str = Form(...)):
+    """Принимает текстовый запрос и возвращает ответ от Gemini."""
+    response = await generate_gemini_response(prompt)
+    return {"response": response}
+
+
+
+
+def docx_to_pdf(docx_content: bytes) -> bytes:
+    """Преобразует содержимое .docx в .pdf (в памяти)."""
+
+    pdf_buffer = BytesIO()  
+    doc = docx.Document(BytesIO(docx_content)) 
+    c = canvas.Canvas(pdf_buffer, pagesize=letter)
+    textobject = c.beginText()
+    textobject.setTextOrigin(10, 730) 
+
+    for paragraph in doc.paragraphs:
+        textobject.textLine(paragraph.text)
+
+    c.drawText(textobject)
+    c.save()
+    pdf_bytes = pdf_buffer.getvalue()
+    pdf_buffer.close()
+    return pdf_bytes
+
+
+@app.post("/chat-with-document")
+async def chat_with_document(
+    file: Optional[UploadFile] = File(None),
+    prompt: Optional[str] = Form(None)
+):
+    """Принимает необязательный файл и необязательный текстовый запрос, возвращает ответ от Gemini."""
+
+    file_contents = None
+    if file:
+        if file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            file_contents = docx_to_pdf(await file.read())  # Преобразуем docx в pdf
+            file_name = file.filename.replace(".docx", ".pdf")
+            file_content_type = "application/pdf"
+        else:
+            file_contents = await file.read()
+            file_name = file.filename
+            file_content_type = file.content_type
+
+    image_parts = []
+    if file_contents:
+        image_parts = [{"mime_type": file_content_type, "data": file_contents}]
+
+    response = await generate_gemini_response(prompt if prompt else "", image_parts)
+    return {"response": response}
+
+
