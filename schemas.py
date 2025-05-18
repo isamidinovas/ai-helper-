@@ -7,11 +7,12 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+
 class UserOut(BaseModel):
     id: int
     username: str
     email: EmailStr
-    
+    # flashcard_decks: List[] = []  
 
     class Config:
        from_attributes = True
@@ -57,3 +58,8 @@ class FlashcardDeck(FlashcardDeckBase):
     creator:  Optional[UserOut] = None
     class Config:
         orm_mode = True
+class FlashcardDeckUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    subject: Optional[str] = None
+    # flashcards: Optional[List[Flashcard]] = None
