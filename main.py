@@ -75,7 +75,7 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     access_token_expires = timedelta(minutes=30)
     access_token = crud.create_access_token(data={"sub": db_user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
-@app.post("/logout")
+@app.post("/auth/logout")
 def logout():
     return {"message": "Successfully logged out. Please delete your token on the client side."}
 
@@ -122,6 +122,18 @@ async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     decks = db.query(models.FlashcardDeck)\
               .options(joinedload(models.FlashcardDeck.creator))\
               .offset(skip).limit(limit).all()
+    return decks
+@app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
+async def read_my_decks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    decks = (
+        db.query(models.FlashcardDeck)
+        .options(joinedload(models.FlashcardDeck.creator))
+        .filter(models.FlashcardDeck.user_id == current_user.id)
+        .all()
+    )
     return decks
 
 @app.delete("/decks/{deck_id}", status_code=204)
@@ -230,12 +242,45 @@ def docx_to_pdf(docx_content: bytes) -> bytes:
     return pdf_bytes
 
 
+# @app.post("/chat-with-document")
+# async def chat_with_document(
+#     file: Optional[UploadFile] = File(None),
+#     prompt: Optional[str] = Form(None)
+# ):
+#     """Принимает необязательный файл и необязательный текстовый запрос, возвращает ответ от Gemini."""
+
+#     file_contents = None
+#     if file:
+#         if file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+#             file_contents = docx_to_pdf(await file.read())  # Преобразуем docx в pdf
+#             file_name = file.filename.replace(".docx", ".pdf")
+#             file_content_type = "application/pdf"
+#         else:
+#             file_contents = await file.read()
+#             file_name = file.filename
+#             file_content_type = file.content_type
+
+#     image_parts = []
+#     if file_contents:
+#         image_parts = [{"mime_type": file_content_type, "data": file_contents}]
+
+#     response = await generate_gemini_response(prompt if prompt else "", image_parts)
+#     return {"response": response}
+class Message(BaseModel):
+    role: str
+    text: str
 @app.post("/chat-with-document")
 async def chat_with_document(
     file: Optional[UploadFile] = File(None),
-    prompt: Optional[str] = Form(None)
+    messages: Optional[str] = Form(None)  # Получаем JSON-строку с историей
 ):
-    """Принимает необязательный файл и необязательный текстовый запрос, возвращает ответ от Gemini."""
+    import json
+    messages_list = []
+    if messages:
+        messages_list = json.loads(messages)
+
+  
+    full_prompt = "\n".join(f"{m['role']}: {m['text']}" for m in messages_list)
 
     file_contents = None
     if file:
@@ -252,5 +297,5 @@ async def chat_with_document(
     if file_contents:
         image_parts = [{"mime_type": file_content_type, "data": file_contents}]
 
-    response = await generate_gemini_response(prompt if prompt else "", image_parts)
+    response = await generate_gemini_response(full_prompt, image_parts)
     return {"response": response}

@@ -19,7 +19,6 @@ class Category(Base):
 
 class FlashcardDeck(Base):
     __tablename__ = "flashcard_decks"
-
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     description = Column(String, nullable=True)
