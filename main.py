@@ -18,6 +18,7 @@ import  os
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
 from docx import Document
+from fastapi import  Query
 from fastapi import FastAPI, File, Form, UploadFile
 import google.generativeai as genai
 import os
@@ -117,24 +118,74 @@ async def create_deck(
 
 
 
+# @app.get("/decks/", response_model=List[schemas.FlashcardDeck])
+# async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+#     decks = db.query(models.FlashcardDeck)\
+#               .options(joinedload(models.FlashcardDeck.creator))\
+#               .offset(skip).limit(limit).all()
+#     return decks
+# @app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
+# async def read_my_decks(
+#     db: Session = Depends(get_db),
+#     current_user: models.User = Depends(get_current_user),
+# ):
+#     decks = (
+#         db.query(models.FlashcardDeck)
+#         .options(joinedload(models.FlashcardDeck.creator))
+#         .filter(models.FlashcardDeck.user_id == current_user.id)
+#         .all()
+#     )
+#     return decks
+
 @app.get("/decks/", response_model=List[schemas.FlashcardDeck])
-async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    decks = db.query(models.FlashcardDeck)\
-              .options(joinedload(models.FlashcardDeck.creator))\
-              .offset(skip).limit(limit).all()
+async def read_decks(
+    skip: int = 0,
+    limit: int = 100,
+    title: Optional[str] = Query(None, description="Название колоды для поиска"),
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.FlashcardDeck).options(joinedload(models.FlashcardDeck.creator))
+
+    if title:
+        query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
+
+    decks = query.offset(skip).limit(limit).all()
     return decks
 @app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
 async def read_my_decks(
+    title: Optional[str] = Query(None, description="Название колоды для поиска"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    decks = (
+    query = (
         db.query(models.FlashcardDeck)
         .options(joinedload(models.FlashcardDeck.creator))
         .filter(models.FlashcardDeck.user_id == current_user.id)
-        .all()
     )
+
+    if title:
+        query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
+
+    decks = query.all()
     return decks
+@app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
+async def read_my_decks(
+    title: Optional[str] = Query(None, description="Название колоды для поиска"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = (
+        db.query(models.FlashcardDeck)
+        .options(joinedload(models.FlashcardDeck.creator))
+        .filter(models.FlashcardDeck.user_id == current_user.id)
+    )
+
+    if title:
+        query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
+
+    decks = query.all()
+    return decks
+
 
 @app.delete("/decks/{deck_id}", status_code=204)
 async def delete_deck(
