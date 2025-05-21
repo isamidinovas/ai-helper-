@@ -172,6 +172,7 @@ async def read_deck_by_id(
     if not deck:
         raise HTTPException(status_code=404, detail=f"No deck found with id: {id}")
     return deck
+
 @app.put("/decks/{deck_id}", response_model=schemas.FlashcardDeck)
 async def update_deck(
     deck_id: int,
@@ -179,7 +180,6 @@ async def update_deck(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-   
     db_deck = db.query(models.FlashcardDeck).filter(models.FlashcardDeck.id == deck_id).first()
     if not db_deck:
         raise HTTPException(status_code=404, detail="Deck not found")
@@ -187,14 +187,25 @@ async def update_deck(
     if db_deck.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this deck")
 
-    # Update the deck attributes
-    for key, value in deck_update.model_dump(exclude_unset=True).items():
+    update_data = deck_update.model_dump(exclude_unset=True)
+
+    # Обновим карточки, если они пришли
+    if "flashcards" in update_data:
+        db_deck.flashcards.clear()
+        for card_data in update_data["flashcards"]:
+            new_card = models.Flashcard(**card_data)
+            db_deck.flashcards.append(new_card)
+        del update_data["flashcards"]
+
+    # Обновим остальные поля (title, description, subject)
+    for key, value in update_data.items():
         setattr(db_deck, key, value)
 
-    db.add(db_deck)
     db.commit()
     db.refresh(db_deck)
+
     return db_deck
+
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY environment variable not set")

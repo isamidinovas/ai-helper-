@@ -62,4 +62,4 @@ class FlashcardDeckUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     subject: Optional[str] = None
-    # flashcards: Optional[List[Flashcard]] = None
+    flashcards: Optional[List[FlashcardCreate]] = None
