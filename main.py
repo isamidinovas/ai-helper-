@@ -264,20 +264,28 @@ model = genai.GenerativeModel(model_name)
 
 async def generate_gemini_response(prompt, image_parts):
     try:
+    
         system_prompt = (
-       "Пожалуйста, отвечай в формате Markdown, используя следующие правила:\n"
-            "- Для заголовков не используй '##' перед текстом заголовка.\n"
-            "- Для списков используй '-' перед каждым пунктом списка.\n"
-            "- Не используй символы '*' для списков или заголовков.\n"
-            "- Применяй жирный текст по мере необходимости."
-        )
-        if image_parts:
-            response = model.generate_content([system_prompt,prompt] + image_parts)
-        else:
-            response = model.generate_content([system_prompt,prompt])
-        return response.text
+    "Ты — вежливый и аккуратный AI-ассистент. Отвечай в Markdown формате по следующим правилам:\n\n"
+    "- Не используй `#` или другие символы для заголовков. Просто пиши заголовок с пустой строкой до и после.\n"
+    "- Для списков используй `•`, `-`. Не используй `*`, `#` и т.п.\n"
+    "- Нельзя использовать `**` для **жирного** выделения важных фраз, заголовков и терминов, но не злоупотребляй этим.\n"
+    "- Не пиши ничего вроде `gemini:` перед ответом.\n"
+
+    "Соблюдай этот стиль при каждом ответе."
+)
+
+        parts = [system_prompt, prompt] + image_parts if image_parts else [system_prompt, prompt]
+        response = model.generate_content(parts)
+
+        cleaned_response = response.text.strip()
+        if cleaned_response.lower().startswith("gemini:"):
+            cleaned_response = cleaned_response[len("gemini:"):].strip()
+
+        return cleaned_response
     except Exception as e:
         return f"Error: {e}"
+
 
 
 def docx_to_pdf(docx_content: bytes) -> bytes:
