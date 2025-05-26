@@ -26,6 +26,8 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 from fastapi import FastAPI
 from crud import get_current_user, update_flashcard
+from langdetect import detect
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(debug=True)
@@ -262,18 +264,23 @@ available_models = list(genai.list_models())
 model_name = 'models/gemini-1.5-flash-latest'  
 model = genai.GenerativeModel(model_name)
 
+
 async def generate_gemini_response(prompt, image_parts):
     try:
     
         system_prompt = (
-    "Ты — вежливый и аккуратный AI-ассистент. Отвечай в Markdown формате по следующим правилам:\n\n"
-    "- Не используй `#` или другие символы для заголовков. Просто пиши заголовок с пустой строкой до и после.\n"
-    "- Для списков используй `•`, `-`. Не используй `*`, `#` и т.п.\n"
-    "- Нельзя использовать `**` для **жирного** выделения важных фраз, заголовков и терминов, но не злоупотребляй этим.\n"
-    "- Не пиши ничего вроде `gemini:` перед ответом.\n"
-
-    "Соблюдай этот стиль при каждом ответе."
+    "Сен — сылык, так жана тилге жараша жооп берген AI жардамчысысың.\n\n"
+    "Мына эрежелер:\n"
+    "- Эгер колдонуучу текст жиберсе — ошол текст кайсы тилде жазылган болсо, жооп ошол эле тилде болсун.\n"
+    "- Эгер колдонуучу эч кандай текст жазбай, жөн гана файл жиберсе — анда жооп **кыргыз тилинде** болсун.\n"
+    "- Жоопторду **Markdown** форматында жаз.\n"
+    "- Эч качан `#`, `##`, `*`, `**` сыяктуу башчылыктарды колдонбо. Темалар үчүн жөн гана текст менен, алдында жана артында бош сап болсун.\n"
+    "- Тизмелер үчүн `•` же `-` колдон.\n"
+    "- Математикалык формулалардын алдында жана артында бош сап болсун. \n"
+    "- Кайсы тилде болбосун, жооптор ар дайым так, сылык жана мазмундуу болсун.\n\n"
+    "Бул эрежелерди ар дайым сакта."
 )
+       
 
         parts = [system_prompt, prompt] + image_parts if image_parts else [system_prompt, prompt]
         response = model.generate_content(parts)
@@ -286,25 +293,9 @@ async def generate_gemini_response(prompt, image_parts):
     except Exception as e:
         return f"Error: {e}"
 
-
-
-def docx_to_pdf(docx_content: bytes) -> bytes:
-    """Преобразует содержимое .docx в .pdf (в памяти)."""
-
-    pdf_buffer = BytesIO()  
-    doc = docx.Document(BytesIO(docx_content)) 
-    c = canvas.Canvas(pdf_buffer, pagesize=letter)
-    textobject = c.beginText()
-    textobject.setTextOrigin(10, 730) 
-
-    for paragraph in doc.paragraphs:
-        textobject.textLine(paragraph.text)
-
-    c.drawText(textobject)
-    c.save()
-    pdf_bytes = pdf_buffer.getvalue()
-    pdf_buffer.close()
-    return pdf_bytes
+def extract_text_from_docx(docx_content: bytes) -> str:
+    doc = docx.Document(BytesIO(docx_content))
+    return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
 
 class Message(BaseModel):
@@ -325,10 +316,11 @@ async def chat_with_document(
 
     file_contents = None
     if file:
-        if file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            file_contents = docx_to_pdf(await file.read())  # Преобразуем docx в pdf
-            file_name = file.filename.replace(".docx", ".pdf")
-            file_content_type = "application/pdf"
+        if file and file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            extracted_text = extract_text_from_docx(await file.read())
+            full_prompt += f"\n\nКолдонуучу файл жүктөдү:\n{extracted_text}"
+            image_parts = []  
+
         else:
             file_contents = await file.read()
             file_name = file.filename
