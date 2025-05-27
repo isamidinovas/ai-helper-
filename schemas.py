@@ -63,3 +63,13 @@ class FlashcardDeckUpdate(BaseModel):
     description: Optional[str] = None
     subject: Optional[str] = None
     flashcards: Optional[List[FlashcardCreate]] = None
+
+class SubjectCreate(BaseModel):
+    name: str
+
+class SubjectOut(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        orm_mode = True

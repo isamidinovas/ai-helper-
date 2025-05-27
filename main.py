@@ -25,7 +25,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from fastapi import FastAPI
-from crud import get_current_user, update_flashcard
+from crud import create_subject, get_current_user, get_subjects, update_flashcard
 from langdetect import detect
 
 models.Base.metadata.create_all(bind=engine)
@@ -88,7 +88,13 @@ def get_categories(db: Session = Depends(get_db)):
     categories = db.query(Category).all()
     return categories
 
+@app.get("/subject", response_model=List[schemas.SubjectOut])
+def read_subjects(db: Session = Depends(get_db)):
+    return get_subjects(db)
 
+@app.post("/subject/create", response_model=schemas.SubjectOut)
+def add_subject(subject: schemas.SubjectCreate, db: Session = Depends(get_db)):
+    return create_subject(db, subject)
 
 @app.post("/create/decks/", response_model=schemas.FlashcardDeck, status_code=201)
 async def create_deck(
@@ -139,18 +145,23 @@ async def read_decks(
     skip: int = 0,
     limit: int = 100,
     title: Optional[str] = Query(None, description="Название колоды для поиска"),
+    subject: Optional[str] = Query(None, description="Фильтрация по предмету"),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.FlashcardDeck).options(joinedload(models.FlashcardDeck.creator))
 
     if title:
         query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
+    if subject and subject != "Баары":
+        query = query.filter(models.FlashcardDeck.subject == subject)
 
     decks = query.offset(skip).limit(limit).all()
     return decks
+
 @app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
 async def read_my_decks(
     title: Optional[str] = Query(None, description="Название колоды для поиска"),
+    subject: Optional[str] = Query(None, description="Фильтрация по предмету"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -162,23 +173,9 @@ async def read_my_decks(
 
     if title:
         query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
-
-    decks = query.all()
-    return decks
-@app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
-async def read_my_decks(
-    title: Optional[str] = Query(None, description="Название колоды для поиска"),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    query = (
-        db.query(models.FlashcardDeck)
-        .options(joinedload(models.FlashcardDeck.creator))
-        .filter(models.FlashcardDeck.user_id == current_user.id)
-    )
-
-    if title:
-        query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
+        
+    if subject and subject != "Баары":
+        query = query.filter(models.FlashcardDeck.subject == subject)
 
     decks = query.all()
     return decks

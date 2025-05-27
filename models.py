@@ -41,4 +41,10 @@ class Flashcard(Base):
     deck = relationship("FlashcardDeck", back_populates="flashcards")
 
 
-    
+class Subject(Base):
+    __tablename__ = "subjects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+
+
