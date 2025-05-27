@@ -173,7 +173,6 @@ async def read_my_decks(
 
     if title:
         query = query.filter(models.FlashcardDeck.title.ilike(f"%{title}%"))
-        
     if subject and subject != "Баары":
         query = query.filter(models.FlashcardDeck.subject == subject)
 
@@ -298,34 +297,42 @@ def extract_text_from_docx(docx_content: bytes) -> str:
 class Message(BaseModel):
     role: str
     text: str
+
 @app.post("/chat-with-document")
 async def chat_with_document(
-    file: Optional[UploadFile] = File(None),
-    messages: Optional[str] = Form(None)  # Получаем JSON-строку с историей
-):
-    import json
-    messages_list = []
-    if messages:
-        messages_list = json.loads(messages)
+        file: Optional[UploadFile] = File(None),
+        messages: Optional[str] = Form(None)
+    ):
+        import json
 
-  
-    full_prompt = "\n".join(f"{m['role']}: {m['text']}" for m in messages_list)
+        messages_list = []
+        if messages:
+            messages_list = json.loads(messages)
 
-    file_contents = None
-    if file:
-        if file and file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            extracted_text = extract_text_from_docx(await file.read())
-            full_prompt += f"\n\nКолдонуучу файл жүктөдү:\n{extracted_text}"
-            image_parts = []  
+        full_prompt = ""
+        if messages_list and any(m['text'].strip() for m in messages_list):
+            full_prompt = "\n".join(f"{m['role']}: {m['text']}" for m in messages_list)
 
-        else:
-            file_contents = await file.read()
-            file_name = file.filename
+        image_parts = []
+
+        if file:
             file_content_type = file.content_type
+            file_bytes = await file.read()
 
-    image_parts = []
-    if file_contents:
-        image_parts = [{"mime_type": file_content_type, "data": file_contents}]
+            if file_content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                extracted_text = extract_text_from_docx(file_bytes)
+                full_prompt += f"\n\nКолдонуучу файл жүктөдү:\n{extracted_text}"
 
-    response = await generate_gemini_response(full_prompt, image_parts)
-    return {"response": response}
+            elif file_content_type == "image/svg+xml":
+                try:
+                    import cairosvg
+                    png_bytes = cairosvg.svg2png(bytestring=file_bytes)
+                    image_parts = [{"mime_type": "image/png", "data": png_bytes}]
+                except Exception as e:
+                    return {"response": f"Ошибка конвертации SVG в PNG: {e}"}
+            else:
+                # Любой другой файл (например PDF, PNG, JPG и т.д.)
+                image_parts = [{"mime_type": file_content_type, "data": file_bytes}]
+
+        response = await generate_gemini_response(full_prompt, image_parts)
+        return {"response": response}
