@@ -25,12 +25,26 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from fastapi import FastAPI
+import subprocess
+
 from crud import create_subject, get_current_user, get_subjects, update_flashcard
 from langdetect import detect
+import whisper
+from tempfile import NamedTemporaryFile
+from contextlib import asynccontextmanager
+from faster_whisper import WhisperModel
+
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(debug=True)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚀 Starting up")
+    yield
+    print("👋 Shutting down")
+
+app = FastAPI(lifespan=lifespan)
+# app = FastAPI(debug=True)
 load_dotenv()
 
 origins = [
@@ -55,8 +69,11 @@ def get_db():
         yield db
     finally:
         db.close()
+os.environ["PATH"] += r";C:\Users\user\Downloads\ffmpeg-master-latest-win64-gpl\bin"
+
 
 @app.get("/")
+
 def read_root():
     return {"message": "Hello, FastAPI!"}
 # Роут регистрации
@@ -257,9 +274,15 @@ genai.configure(api_key=GOOGLE_API_KEY)
 
 available_models = list(genai.list_models())  
 
-model_name = 'models/gemini-1.5-flash-latest'  
+# model_name = 'models/gemini-1.5-flash-latest'  
+model_name='models/gemini-2.0-flash'
 model = genai.GenerativeModel(model_name)
+# whisper_model = whisper.load_model("small") 
+whisper_model = WhisperModel("small", device="cpu", compute_type="int8",verbose=True)  # или "cuda", если есть GPU
 
+# Загружаем модель один раз при старте приложения
+# Возможные модели: "tiny", "base", "small", "medium", "large-v2", "large-v3"
+# whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
 
 async def generate_gemini_response(prompt, image_parts):
     try:
@@ -330,6 +353,34 @@ async def chat_with_document(
                     image_parts = [{"mime_type": "image/png", "data": png_bytes}]
                 except Exception as e:
                     return {"response": f"Ошибка конвертации SVG в PNG: {e}"}
+            elif file_content_type.startswith("audio/"):
+                try:
+                    with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+                        temp_audio.write(file_bytes)
+                        temp_audio.flush()
+                        # audio_result = whisper_model.transcribe(temp_audio.name)
+                        # audio_text = audio_result.get("text", "").strip()
+                        segments, _ = whisper_model.transcribe(temp_audio.name)
+                        audio_text = " ".join([seg.text for seg in segments]).strip()
+                        if audio_text:
+                            full_prompt += f"\n\nКолдонуучу үн жүктөдү:\n{audio_text}"
+                except Exception as e:
+                    return {"response": f"Үн файлын окууда ката кетти: {e}"}
+            # elif file.content_type.startswith("audio/"):
+            #         try:
+            #             with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+            #                 temp_audio.write(file_bytes)
+            #                 temp_audio.flush()
+
+            #                 # Распознаем речь
+            #                 segments, info = whisper_model.transcribe(temp_audio.name, beam_size=5)
+            #                 audio_text = " ".join([seg.text.strip() for seg in segments])
+
+            #                 if audio_text:
+            #                     full_prompt += f"\n\nКолдонуучу үн жүктөдү:\n{audio_text}"
+            #         except Exception as e:
+            #             return {"response": f"Үн файлын окууда ката кетти: {e}"}
+
             else:
                 # Любой другой файл (например PDF, PNG, JPG и т.д.)
                 image_parts = [{"mime_type": file_content_type, "data": file_bytes}]
