@@ -3,6 +3,15 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from typing import List
 
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str # Временно возвращаем refresh_token в теле для удобства дебага
+    token_type: str = "bearer"
+class TokenData(BaseModel):
+    sub: Optional[str] = None # 'sub' будет содержать email пользователя
+    token_type: Optional[str] = None # 'access' или 'refresh'
+    jti: Optional[str] = None # JWT ID для Refresh Token
+
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
