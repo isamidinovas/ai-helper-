@@ -26,15 +26,13 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 from fastapi import FastAPI
 import subprocess
+import cairosvg
 
 from crud import create_subject, get_current_user, get_subjects, update_flashcard
 from langdetect import detect
-import whisper
 from tempfile import NamedTemporaryFile
 from contextlib import asynccontextmanager
-from faster_whisper import WhisperModel
-
-
+from io import BytesIO
 models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
@@ -250,7 +248,6 @@ async def update_deck(
 
     update_data = deck_update.model_dump(exclude_unset=True)
 
-    # Обновим карточки, если они пришли
     if "flashcards" in update_data:
         db_deck.flashcards.clear()
         for card_data in update_data["flashcards"]:
@@ -258,7 +255,6 @@ async def update_deck(
             db_deck.flashcards.append(new_card)
         del update_data["flashcards"]
 
-    # Обновим остальные поля (title, description, subject)
     for key, value in update_data.items():
         setattr(db_deck, key, value)
 
@@ -274,15 +270,9 @@ genai.configure(api_key=GOOGLE_API_KEY)
 
 available_models = list(genai.list_models())  
 
-# model_name = 'models/gemini-1.5-flash-latest'  
 model_name='models/gemini-2.0-flash'
 model = genai.GenerativeModel(model_name)
-# whisper_model = whisper.load_model("small") 
-whisper_model = WhisperModel("small", device="cpu", compute_type="int8",verbose=True)  # или "cuda", если есть GPU
 
-# Загружаем модель один раз при старте приложения
-# Возможные модели: "tiny", "base", "small", "medium", "large-v2", "large-v3"
-# whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
 
 async def generate_gemini_response(prompt, image_parts):
     try:
@@ -293,7 +283,7 @@ async def generate_gemini_response(prompt, image_parts):
     "- Эгер колдонуучу текст жиберсе — ошол текст кайсы тилде жазылган болсо, жооп ошол эле тилде болсун.\n"
     "- Эгер колдонуучу эч кандай текст жазбай, жөн гана файл жиберсе — анда жооп **кыргыз тилинде** болсун.\n"
     "- Жоопторду **Markdown** форматында жаз.\n"
-    "- Эч качан `#`, `##`, `*`, `**` сыяктуу башчылыктарды колдонбо. Темалар үчүн жөн гана текст менен, алдында жана артында бош сап болсун.\n"
+    "- Эч качан `#`, `##`, `*`,`````, `**` сыяктуу башчылыктарды колдонбо. Темалар үчүн жөн гана текст менен, алдында жана артында бош сап болсун.\n"
     "- Тизмелер үчүн `•` же `-` колдон.\n"
     "- Математикалык формулалардын алдында жана артында бош сап болсун. \n"
     "- Кайсы тилде болбосун, жооптор ар дайым так, сылык жана мазмундуу болсун.\n\n"
@@ -321,69 +311,48 @@ class Message(BaseModel):
     role: str
     text: str
 
+
 @app.post("/chat-with-document")
 async def chat_with_document(
         file: Optional[UploadFile] = File(None),
         messages: Optional[str] = Form(None)
     ):
-        import json
+    import json
 
-        messages_list = []
-        if messages:
-            messages_list = json.loads(messages)
+    messages_list = []
+    if messages:
+        messages_list = json.loads(messages)
 
-        full_prompt = ""
-        if messages_list and any(m['text'].strip() for m in messages_list):
-            full_prompt = "\n".join(f"{m['role']}: {m['text']}" for m in messages_list)
+    full_prompt = ""
+    if messages_list and any(m['text'].strip() for m in messages_list):
+        full_prompt = "\n".join(f"{m['role']}: {m['text']}" for m in messages_list)
 
-        image_parts = []
+    image_parts = []
 
-        if file:
-            file_content_type = file.content_type
-            file_bytes = await file.read()
+    if file:
+        file_content_type = file.content_type
+        file_bytes = await file.read()
 
-            if file_content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                extracted_text = extract_text_from_docx(file_bytes)
-                full_prompt += f"\n\nКолдонуучу файл жүктөдү:\n{extracted_text}"
+        if file_content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            extracted_text = extract_text_from_docx(file_bytes)
+            full_prompt += f"\n\nКолдонуучу файл жүктөдү:\n{extracted_text}"
 
-            elif file_content_type == "image/svg+xml":
-                try:
-                    import cairosvg
-                    png_bytes = cairosvg.svg2png(bytestring=file_bytes)
-                    image_parts = [{"mime_type": "image/png", "data": png_bytes}]
-                except Exception as e:
-                    return {"response": f"Ошибка конвертации SVG в PNG: {e}"}
-            elif file_content_type.startswith("audio/"):
-                try:
-                    with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-                        temp_audio.write(file_bytes)
-                        temp_audio.flush()
-                        # audio_result = whisper_model.transcribe(temp_audio.name)
-                        # audio_text = audio_result.get("text", "").strip()
-                        segments, _ = whisper_model.transcribe(temp_audio.name)
-                        audio_text = " ".join([seg.text for seg in segments]).strip()
-                        if audio_text:
-                            full_prompt += f"\n\nКолдонуучу үн жүктөдү:\n{audio_text}"
-                except Exception as e:
-                    return {"response": f"Үн файлын окууда ката кетти: {e}"}
-            # elif file.content_type.startswith("audio/"):
-            #         try:
-            #             with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-            #                 temp_audio.write(file_bytes)
-            #                 temp_audio.flush()
+        elif file_content_type == "image/svg+xml":
+            try:
+                
+                png_bytes = cairosvg.svg2png(bytestring=file_bytes)
+                image_parts = [{"mime_type": "image/png", "data": png_bytes}]
+            except Exception as e:
+                return {"response": f"Ошибка конвертации SVG в PNG: {e}"}
 
-            #                 # Распознаем речь
-            #                 segments, info = whisper_model.transcribe(temp_audio.name, beam_size=5)
-            #                 audio_text = " ".join([seg.text.strip() for seg in segments])
-
-            #                 if audio_text:
-            #                     full_prompt += f"\n\nКолдонуучу үн жүктөдү:\n{audio_text}"
-            #         except Exception as e:
-            #             return {"response": f"Үн файлын окууда ката кетти: {e}"}
-
-            else:
-                # Любой другой файл (например PDF, PNG, JPG и т.д.)
+        elif file_content_type.startswith("audio/"):
+            try:
                 image_parts = [{"mime_type": file_content_type, "data": file_bytes}]
+            except Exception as e:
+                return {"response": f"Үн файлын даярдоодо ката кетти: {e}"}
 
-        response = await generate_gemini_response(full_prompt, image_parts)
-        return {"response": response}
+        else:
+            image_parts = [{"mime_type": file_content_type, "data": file_bytes}]
+
+    response = await generate_gemini_response(full_prompt, image_parts)
+    return {"response": response}
