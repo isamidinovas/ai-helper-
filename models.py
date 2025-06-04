@@ -1,7 +1,7 @@
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text,DateTime,ForeignKey, Boolean 
-from database import Base  # база из database.py (покажу позже)
+from database import Base  
 
 class User(Base):
     __tablename__ = "users"
@@ -16,14 +16,11 @@ class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
-    jti = Column(String, unique=True, index=True, nullable=False) # JWT ID, уникальный идентификатор токена
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False) # Внешний ключ к таблице users
-    expires_at = Column(DateTime, nullable=False) # Время истечения токена
-    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False) # Время выдачи токена
-    revoked = Column(Boolean, default=False, nullable=False) # Флаг для отзыва токена
-
-    # НОВАЯ СВЯЗЬ: Обратная связь с User
-    # 'owner' здесь соответствует 'refresh_tokens' в модели User
+    jti = Column(String, unique=True, index=True, nullable=False) 
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False) 
+    expires_at = Column(DateTime, nullable=False) 
+    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False) 
+    revoked = Column(Boolean, default=False, nullable=False) 
     owner = relationship("User", back_populates="refresh_tokens")
 
 class Category(Base):

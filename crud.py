@@ -1,3 +1,4 @@
+import uuid
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Flashcard, User
@@ -8,7 +9,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Request
 import os
 from dotenv import load_dotenv
 from sqlalchemy.orm import joinedload
@@ -46,13 +47,57 @@ def verify_password(plain_password, hashed_password):
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+def create_refresh_token(user_id: int, db: Session) -> str:
+    jti = str(uuid.uuid4())
+    expires = datetime.utcnow() + timedelta(days=30)
+
+    payload = {
+        "sub": str(user_id),
+        "jti": jti,
+        "exp": expires,
+        "iat": datetime.utcnow()
+    }
+
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    db_token = models.RefreshToken(
+        jti=jti,
+        user_id=user_id,
+        expires_at=expires,
+        issued_at=datetime.utcnow(),
+        revoked=False,
+    )
+    db.add(db_token)
+    db.commit()
+
+    return token
+
+def verify_refresh_token(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        user_id = int(payload.get("sub"))
+
+        token_in_db = db.query(models.RefreshToken).filter_by(jti=jti, revoked=False).first()
+        if not token_in_db or token_in_db.expires_at < datetime.utcnow():
+            return None
+
+        return db.query(models.User).filter_by(id=user_id).first()
+
+    except JWTError:
+        return None
+def revoke_refresh_token(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        db.query(models.RefreshToken).filter_by(jti=jti).update({"revoked": True})
+        db.commit()
+    except JWTError:
+        pass
 
 def login_user(db: Session, email: str, password: str):
     user = db.query(User).filter(User.email == email).first()
@@ -63,7 +108,14 @@ def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> User:
+    token = request.cookies.get("access_token")  # вытягиваем токен из cookie
+    if not token:
+        raise HTTPException(status_code=401, detail="Token not found")
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_email = payload.get("sub")
@@ -76,7 +128,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
 
 def get_flashcards(db: Session, deck_id: int):
     # Получаем флешкарты с автором

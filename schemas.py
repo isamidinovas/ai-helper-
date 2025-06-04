@@ -5,12 +5,12 @@ from typing import List
 
 class Token(BaseModel):
     access_token: str
-    refresh_token: str # Временно возвращаем refresh_token в теле для удобства дебага
+    refresh_token: str 
     token_type: str = "bearer"
 class TokenData(BaseModel):
-    sub: Optional[str] = None # 'sub' будет содержать email пользователя
-    token_type: Optional[str] = None # 'access' или 'refresh'
-    jti: Optional[str] = None # JWT ID для Refresh Token
+    sub: Optional[str] = None 
+    token_type: Optional[str] = None 
+    jti: Optional[str] = None 
 
 class UserCreate(BaseModel):
     username: str
@@ -21,7 +21,6 @@ class UserOut(BaseModel):
     id: int
     username: str
     email: EmailStr
-    # flashcard_decks: List[] = []  
 
     class Config:
        from_attributes = True

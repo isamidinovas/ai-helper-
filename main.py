@@ -1,5 +1,6 @@
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 import models
 import schemas
@@ -46,18 +47,16 @@ app = FastAPI(lifespan=lifespan)
 load_dotenv()
 
 origins = [
-    "http://localhost:3000",  # React dev сервер
-    # "https://yourdomain.com",  # если есть прод
+    "http://localhost:3000", 
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,              # Разрешённые origin'ы
+    allow_origins=origins,             
     allow_credentials=True,
-    allow_methods=["*"],                # Разрешить все методы (GET, POST и т.д.)
-    allow_headers=["*"],                # Разрешить все заголовки
+    allow_methods=["*"],                
+    allow_headers=["*"],                
 )
-# API_KEY = "AIzaSyDP5gAM_SFEgidSaVouogVrdsH8PrZyS9c"
 class GeminiRequest(BaseModel):
     text: str
 # Функция для подключения к БД
@@ -85,12 +84,75 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @app.post("/auth/login")
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = crud.login_user(db, user.email, user.password)
-    access_token_expires = timedelta(minutes=30)
-    access_token = crud.create_access_token(data={"sub": db_user.email}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+    if not db_user:
+        raise HTTPException(status_code=400, detail="Неверные учетные данные")
+
+    access_token = crud.create_access_token(
+        data={"sub": db_user.email},
+        expires_delta=timedelta(minutes=30)
+    )
+    refresh_token = crud.create_refresh_token(user_id=db_user.id, db=db)
+
+    # установка куков
+    response = JSONResponse(content={"message": "Успешный вход"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=1800,
+        secure=False,
+        #  secure=True  на продакшене,
+        samesite="Lax"
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        max_age=60 * 60 * 24 * 30,
+        secure=False,
+         #  secure=True  на продакшене,
+        samesite="Lax"
+    )
+    return response
+
+@app.post("/auth/refresh")
+def refresh_token(request: Request, db: Session = Depends(get_db)):
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Отсутствует refresh токен")
+
+    user = crud.verify_refresh_token(refresh_token, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Невалидный или отозванный refresh токен")
+
+    new_access_token = crud.create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=30)
+    )
+
+    response = JSONResponse(content={"message": "Access токен обновлён"})
+    response.set_cookie(
+        key="access_token",
+        value=new_access_token,
+        httponly=True,
+        max_age=1800,
+        secure=False,
+        samesite="Lax"
+    )
+    return response
+
+
 @app.post("/auth/logout")
-def logout():
-    return {"message": "Successfully logged out. Please delete your token on the client side."}
+def logout(request: Request, db: Session = Depends(get_db)):
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        crud.revoke_refresh_token(refresh_token, db)
+
+    response = JSONResponse(content={"message": "Вы вышли из системы"})
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return response
+
 
 
 @app.get("/users/me", response_model=schemas.UserOut)
@@ -115,11 +177,11 @@ def add_subject(subject: schemas.SubjectCreate, db: Session = Depends(get_db)):
 async def create_deck(
         deck: schemas.FlashcardDeckCreate,
         db: Session = Depends(get_db),
-        current_user: models.User = Depends(get_current_user)  # Важно!
+        current_user: models.User = Depends(get_current_user) 
     ):
         db_deck = models.FlashcardDeck(
             **deck.model_dump(exclude={"flashcards"}),
-            user_id=current_user.id  # Вот это добавь!
+            user_id=current_user.id  
         )
         db.add(db_deck)
         db.commit()
@@ -133,27 +195,6 @@ async def create_deck(
         db.refresh(db_deck)
         return db_deck
 
-
-
-
-# @app.get("/decks/", response_model=List[schemas.FlashcardDeck])
-# async def read_decks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-#     decks = db.query(models.FlashcardDeck)\
-#               .options(joinedload(models.FlashcardDeck.creator))\
-#               .offset(skip).limit(limit).all()
-#     return decks
-# @app.get("/my-decks/", response_model=List[schemas.FlashcardDeck])
-# async def read_my_decks(
-#     db: Session = Depends(get_db),
-#     current_user: models.User = Depends(get_current_user),
-# ):
-#     decks = (
-#         db.query(models.FlashcardDeck)
-#         .options(joinedload(models.FlashcardDeck.creator))
-#         .filter(models.FlashcardDeck.user_id == current_user.id)
-#         .all()
-#     )
-#     return decks
 
 @app.get("/decks/", response_model=List[schemas.FlashcardDeck])
 async def read_decks(
